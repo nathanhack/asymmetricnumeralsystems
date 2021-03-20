@@ -1,6 +1,6 @@
-# asymmetricnumblsystems
+# asymmetricnumeralsystems
 
-*asymmetricnumblsystems* - Is a set of Asymmetric Numeral Systems entropy encoding tools
+*asymmetricnumeralsystems* - Is a set of Asymmetric Numeral Systems entropy encoding tools
 
 Currently, implemented:
 
