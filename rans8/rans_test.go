@@ -1,8 +1,9 @@
 package rans8
 
 import (
+	"bytes"
 	"encoding/binary"
-	"fmt"
+	"io"
 	"math/rand"
 	"reflect"
 	"testing"
@@ -297,11 +298,10 @@ func TestRANSEncoder_EncodeDecode(t *testing.T) {
 }
 
 func TestRANS_Encoder_Decoder_Random(t *testing.T) {
-	maxLen := 10000 * 8
+	maxLen := 100 * 8
 
-	for i := 1; i < maxLen; i++ {
+	for i := 1; i < maxLen; i = i + 8 {
 		onesCount := i
-		fmt.Printf("onesCount: %v", onesCount)
 		expected := make([]int, maxLen)
 		values := make(map[int]bool)
 		for len(values) < onesCount {
@@ -321,7 +321,7 @@ func TestRANS_Encoder_Decoder_Random(t *testing.T) {
 		}
 
 		actualEncoded := ansEncoder.Bytes()
-		fmt.Println(" len:", len(actualEncoded))
+
 		ansDecoder := RANSDecoder{
 			Freqs:   freqs,
 			State:   ansEncoder.State(),
@@ -345,5 +345,221 @@ func TestRANS_Encoder_Decoder_Random(t *testing.T) {
 			t.Logf("expected(%v): %v", onesCount, expected)
 			t.Fatalf("expected \n%v\n but found \n%v\n", expected, actualDecoded)
 		}
+	}
+}
+
+func TestReader_Read_EOF(t *testing.T) {
+	reader := NewReader(&bytes.Buffer{})
+	n, err := reader.Read(make([]byte, 100))
+
+	if n != 0 {
+		t.Fatalf("expected 0 but found %v", n)
+	}
+
+	if err != io.EOF {
+		t.Fatalf("expected %v but found %v", io.EOF, err)
+	}
+}
+
+func TestWriter_Flush(t *testing.T) {
+	groups := 3
+	groupSize := 33
+	orginal := make([]byte, groupSize*groups)
+	for i := range orginal {
+		orginal[i] = byte(rand.Intn(256))
+	}
+	buf := &bytes.Buffer{}
+	writer := NewWriter(buf)
+
+	for i := 0; i < groups; i++ {
+		input := orginal[i*groupSize : (i+1)*groupSize]
+		n, err := writer.Write(input)
+		if err != nil {
+			t.Fatalf("expected no error found: %v", err)
+		}
+		if n != len(input) {
+			t.Fatalf("expecte %v but found %v", len(input), n)
+		}
+		err = writer.Flush()
+		if err != nil {
+			t.Fatalf("expected no error found: %v", err)
+		}
+	}
+	err := writer.Close()
+	if err != nil {
+		t.Fatalf("expected no error found: %v", err)
+	}
+
+	actualDecoded := make([]byte, groupSize)
+	reader := NewReader(buf)
+	for i := 0; i < groups; i++ {
+		n, err := reader.Read(actualDecoded)
+		if err != nil {
+			t.Fatalf("expected no error found: %v", err)
+		}
+		if n != groupSize {
+			t.Fatalf("expected %v but found %v", groupSize, n)
+		}
+		expected := orginal[i*groupSize : (i+1)*groupSize]
+		if !reflect.DeepEqual(expected, actualDecoded) {
+			t.Fatalf("expected \n%v\n but found \n%v\n", expected, actualDecoded)
+		}
+	}
+}
+
+func TestReaderMultiFlush(t *testing.T) {
+	groups := 3
+	groupSize := 33
+	orginal := make([]byte, groupSize*groups)
+	for i := range orginal {
+		orginal[i] = byte(rand.Intn(256))
+	}
+	buf := &bytes.Buffer{}
+	writer := NewWriter(buf)
+
+	for i := 0; i < groups; i++ {
+		input := orginal[i*groupSize : (i+1)*groupSize]
+		n, err := writer.Write(input)
+		if err != nil {
+			t.Fatalf("expected no error found: %v", err)
+		}
+		if n != len(input) {
+			t.Fatalf("expecte %v but found %v", len(input), n)
+		}
+		err = writer.Flush()
+		if err != nil {
+			t.Fatalf("expected no error found: %v", err)
+		}
+	}
+	err := writer.Close()
+	if err != nil {
+		t.Fatalf("expected no error found: %v", err)
+	}
+
+	actualDecoded := make([]byte, groupSize*groups)
+	reader := NewReader(buf)
+
+	n, err := reader.Read(actualDecoded)
+	if err != nil {
+		t.Fatalf("expected no error found: %v", err)
+	}
+	if n != len(actualDecoded) {
+		t.Fatalf("expected %v but found %v", len(actualDecoded), n)
+	}
+
+	if !reflect.DeepEqual(orginal, actualDecoded) {
+		t.Fatalf("expected \n%v\n but found \n%v\n", orginal, actualDecoded)
+	}
+
+}
+
+func TestReaderWriter_less(t *testing.T) {
+	input := make([]byte, 100)
+	for i := range input {
+		input[i] = byte(rand.Intn(256))
+	}
+	buf := &bytes.Buffer{}
+	writer := NewWriter(buf)
+
+	n, err := writer.Write(input)
+	if err != nil {
+		t.Fatalf("expected no error found: %v", err)
+	}
+	if n != len(input) {
+		t.Fatalf("expecte %v but found %v", len(input), n)
+	}
+	err = writer.Close()
+	if err != nil {
+		t.Fatalf("expected no error found: %v", err)
+	}
+
+	reader := NewReader(buf)
+	byteBuffer := make([]byte, 50)
+
+	n, err = reader.Read(byteBuffer)
+	if err != io.ErrShortBuffer {
+		t.Fatalf("expected no error found: %v", err)
+	}
+
+	if n != len(byteBuffer) {
+		t.Fatalf("expected %v but found %v", len(byteBuffer), n)
+	}
+
+	if !reflect.DeepEqual(input[:50], byteBuffer) {
+		t.Fatalf("expected \n%v\n but found \n%v\n", input, byteBuffer)
+	}
+}
+
+func TestReaderWriter_extact(t *testing.T) {
+	input := make([]byte, 100)
+	for i := range input {
+		input[i] = byte(rand.Intn(256))
+	}
+	buf := &bytes.Buffer{}
+	writer := NewWriter(buf)
+
+	n, err := writer.Write(input)
+	if err != nil {
+		t.Fatalf("expected no error found: %v", err)
+	}
+	if n != len(input) {
+		t.Fatalf("expecte %v but found %v", len(input), n)
+	}
+	err = writer.Close()
+	if err != nil {
+		t.Fatalf("expected no error found: %v", err)
+	}
+
+	reader := NewReader(buf)
+	byteBuffer := make([]byte, 100)
+
+	n, err = reader.Read(byteBuffer)
+	if err != nil {
+		t.Fatalf("expected no error found: %v", err)
+	}
+
+	if n != len(byteBuffer) {
+		t.Fatalf("expected %v but found %v", len(byteBuffer), n)
+	}
+
+	if !reflect.DeepEqual(input, byteBuffer) {
+		t.Fatalf("expected \n%v\n but found \n%v\n", input, byteBuffer)
+	}
+}
+
+func TestReaderWriter_more(t *testing.T) {
+	input := make([]byte, 100)
+	for i := range input {
+		input[i] = byte(rand.Intn(256))
+	}
+	buf := &bytes.Buffer{}
+	writer := NewWriter(buf)
+
+	n, err := writer.Write(input)
+	if err != nil {
+		t.Fatalf("expected no error found: %v", err)
+	}
+	if n != len(input) {
+		t.Fatalf("expecte %v but found %v", len(input), n)
+	}
+	err = writer.Close()
+	if err != nil {
+		t.Fatalf("expected no error found: %v", err)
+	}
+
+	reader := NewReader(buf)
+	byteBuffer := make([]byte, 200)
+
+	n, err = reader.Read(byteBuffer)
+	if err != io.EOF {
+		t.Fatalf("expected no error found: %v", err)
+	}
+
+	if n != len(input) {
+		t.Fatalf("expected %v but found %v", len(byteBuffer), n)
+	}
+
+	if !reflect.DeepEqual(input, byteBuffer[:len(input)]) {
+		t.Fatalf("expected \n%v\n but found \n%v\n", input, byteBuffer[:len(input)])
 	}
 }
