@@ -6,41 +6,6 @@ import (
 	"testing"
 )
 
-func TestANSEncoder_Encode(t *testing.T) {
-	type fields struct {
-		SymbolScaledFreq  map[int]*big.Int
-		m                 *big.Int
-		pdf               []*big.Int
-		cdf               []*big.Int
-		state             *big.Int
-		symbolToPairIndex map[int]int
-		mSubPdf           []*big.Int
-	}
-	type args struct {
-		symbol int
-	}
-	tests := []struct {
-		name   string
-		fields fields
-		args   args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			r := &bigIntEncoder{
-				symbolScaledFreq:  tt.fields.SymbolScaledFreq,
-				m:                 tt.fields.m,
-				pdf:               tt.fields.pdf,
-				cdf:               tt.fields.cdf,
-				state:             tt.fields.state,
-				symbolToPairIndex: tt.fields.symbolToPairIndex,
-				mSubPdf:           tt.fields.mSubPdf,
-			}
-			r.Encode(tt.args.symbol)
-		})
-	}
-}
 
 func TestEncode_Decode(t *testing.T) {
 	freqs := map[int]*big.Int{
@@ -72,5 +37,4 @@ func TestEncode_Decode(t *testing.T) {
 	if !reflect.DeepEqual(expectedSymbols, actualSymbols) {
 		t.Errorf("expected: %v found %v", expectedSymbols, actualSymbols)
 	}
-
 }
